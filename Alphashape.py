@@ -52,7 +52,7 @@ class Separator():
 
 # main
 if __name__ == '__main__':
-    path = "D:\\MyCodeProject\\vsCodeProject\\cppFile\\图形学\\AdvancingFrontMethod\\input3.obj"
+    path = "input3.obj"
     vertex, objectNorm, mesh = PharseOBJfile.read2dObjShap(path)
     boundary, inside, min_distance = Separator.get_alpha(vertex)
     # print(boundary, inside)

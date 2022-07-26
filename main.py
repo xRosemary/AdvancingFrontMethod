@@ -1,13 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import alphashape
-from shapely.geometry import mapping
 import turtle
 import PharseOBJfile
 from Alphashape import Separator
 
 class AdvancingFrontMesh():
-    def __init__(self, TriangleRadius, height):
+    def __init__(self):
         self.nmax = 10000
         # 0行3列的点集
         self.point = np.empty((0, 3))
@@ -30,61 +28,44 @@ class AdvancingFrontMesh():
         self.EdgeFront = np.array([False for _ in range(self.nmax)], dtype=bool) # 当前边是否为前边(front)
         self.EdgeIndex = 0  # 目前索引数
         self.Triangles = np.array([], dtype=int) # 三角形索引
-        self.TriangleRadius = TriangleRadius  # 等边三角形的边长，(1-0.5^2)^(1/2) = 0.866
-        self.height = height  # 从边的中点生出新点的距离，尽量保持为等边三角形
+        self.TriangleRadius = 0.0  # 等边三角形的边长，(1-0.5^2)^(1/2) = 0.866
+        self.height = 0.0  # 从边的中点生出新点的距离，尽量保持为等边三角形
 
-        for i in range(self.nmax):
-            self.Head[i] = -1
-            self.EdgeFront[i] = False
-            self.PointFront[i] = 0
+    def split_point(self, path, size=50):
+        # 分割点集，将模型的点集分割成边界点和内部点
+        # path: 模型的路径
+        # size: 绘图时放大的倍数
 
-        # self.add_point()
-
-        # for i in range(len(self.point)):
-        #     self.PointFront[i] = 2
-
-
-    def add_point(self):
-        self.TriangleRadius = 0.9
-        self.height = self.TriangleRadius * 0.9
-        squarelen = 10
-        distan = self.TriangleRadius
-
-        for i in range(squarelen):
-            self.point = np.append(self.point, [[distan*i, 0, 0]], axis=0)
-            self.addEdge(i, i+1)
-
-        for i in range(squarelen):
-            self.point = np.append(self.point, [[squarelen * distan, 0, i * distan]], axis=0)
-            self.addEdge(i + squarelen, i + 1 + squarelen)
-
-        for i in range(squarelen):
-            self.point = np.append(self.point, [[squarelen * distan - i * distan, 0, squarelen * distan]], axis=0)
-            self.addEdge(i + 2 * squarelen, i + 1 + 2 * squarelen)
-
-        for i in range(squarelen):
-            self.point = np.append(self.point, [[0, 0, squarelen * distan - i * distan]], axis=0)
-            ed = i + 1 + squarelen * 3
-            if (i == squarelen - 1):
-                ed = 0
-
-            self.addEdge(i + squarelen * 3, ed)
-
-    def get_boundary(self, path):
         vertex, objectNorm, mesh = PharseOBJfile.read2dObjShap(path)
-        boundary, inside = Separator.get_alpha(vertex)
-        self.point = boundary
-        for i in range(len(self.point)-2):
-            self.addEdge(i, i+1)
+        boundary, inside, min_distance = Separator.get_alpha(vertex)
 
-        self.addEdge(len(self.point)-2, 0)
+        self.TriangleRadius = min_distance / 2  # 圆形半径
+        self.height = self.TriangleRadius  # 三角形的高
+
+        self.point = boundary
+        for i in range(len(boundary)-1):
+            self.add_edge(i, i+1)
+
+        self.add_edge(len(boundary)-1, 0)
+        self.point = np.append(self.point, inside, axis=0)
+
+        self.point = np.append(self.point, [self.point[0]], axis=0)
+        print(self.point)
         for i in range(len(self.point)):
             self.PointFront[i] = 2
 
+        points = np.delete(self.point,1, axis = 1) * size
 
+        # 绘制已有的点
+        for p in points:
+            turtle.penup()
+            turtle.goto(p)
+            turtle.dot()
+            turtle.pendown()
+ 
+    def get_new_triangle(self):
+        # 根据前向点和边的索引，生成新的三角形
 
-
-    def GenNewTriangle(self):
         st = self.EdgeFrom[self.EdgeIndex]
         ed = self.EdgeTo[self.EdgeIndex]
 
@@ -141,11 +122,12 @@ class AdvancingFrontMesh():
                 continue
             if(self.PointFront[i] == 0):
                 continue
+            
             dis = np.linalg.norm(NewVec - self.point[i])
             if(dis < self.TriangleRadius and dis < mindis):
                 mindis = dis
-                newindex = i
-        
+                newindex = i       
+
         if(newindex == -1):
             newindex = len(self.point)
             self.point = np.append(self.point, [NewVec], axis=0)
@@ -180,20 +162,20 @@ class AdvancingFrontMesh():
         self.Triangles = np.append(self.Triangles, ed)
 
         if (leftedge):
-            self.addEdge(st, newindex)
+            self.add_edge(st, newindex)
         if (rightedge):
-            self.addEdge(newindex, ed)
+            self.add_edge(newindex, ed)
 
         self.EdgeIndex += 1
         
-
     def Update(self):
-
+        # 更新点的前向点和边的前向点
+        
         if (self.EdgeIndex < self.Edgenum):
         
             if (self.EdgeFront[self.EdgeIndex] == True):
             
-                self.GenNewTriangle()
+                self.get_new_triangle()
                 self.verties = np.empty(shape=(len(self.Triangles),3), dtype=int)
                 self.tries = np.empty(shape=(len(self.Triangles),0), dtype=int)
 
@@ -207,16 +189,21 @@ class AdvancingFrontMesh():
         else:
             return False
 
-    def addEdge(self, st, ed):
-            self.EdgeFrom[self.Edgenum] = st
-            self.EdgeTo[self.Edgenum] = ed
-            self.EdgeNext[self.Edgenum] = self.Head[st]
-            self.Head[st] = self.Edgenum
-            self.EdgeFront[self.Edgenum] = True
-            self.Edgenum += 1
+    def add_edge(self, st, ed):
+        # 添加边
+        # st: 边的起点
+        # ed: 边的终点
+        self.EdgeFrom[self.Edgenum] = st
+        self.EdgeTo[self.Edgenum] = ed
+        self.EdgeNext[self.Edgenum] = self.Head[st]
+        self.Head[st] = self.Edgenum
+        self.EdgeFront[self.Edgenum] = True
+        self.Edgenum += 1
 
     def Draw(self, size=50):
-        
+        # 绘制三角形
+        # size: 绘制时放大的倍数
+
         self.Triangles = self.Triangles.reshape(-1,3)
         turtle.color("blue")
         for tri in self.Triangles:
@@ -231,22 +218,20 @@ class AdvancingFrontMesh():
             turtle.goto(points[2])  # 走到points[2]
             turtle.goto(points[0])  # 回到points[0]，完成三角形的绘制
     
-        plt.show()
+        turtle.done()
 
 
 if __name__ == '__main__':
-    path = "D:\\MyCodeProject\\vsCodeProject\\cppFile\\图形学\\AdvancingFrontMethod\\input3.obj"
+    path = "input3.obj"
     
-    AFM = AdvancingFrontMesh(0.3, 0.258)
-    AFM.get_boundary(path)
+    AFM = AdvancingFrontMesh()
+
+    size = 120
+
+    AFM.split_point(path,size=size)
 
     while(AFM.Update()):
         pass
     
-    # for i in range(300):
-    #     AFM.Update()
-
     print("Done")
-    AFM.Draw()
-    
-        
+    AFM.Draw(size=size)
